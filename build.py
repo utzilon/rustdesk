@@ -1015,6 +1015,11 @@ def main():
         print(feats)
         return
 
+    # Utzil Remote: nombre, servidor, metadatos e íconos antes de compilar.
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utzil'))
+    import marca
+    marca.aplicar()
+
     if os.path.exists(exe_path):
         os.unlink(exe_path)
     if os.path.isfile('/usr/bin/pacman'):
