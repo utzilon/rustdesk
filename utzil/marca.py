@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 NOMBRE = "Utzil Remote"
+ID_ANDROID = "mx.utzilon.remote"
 EMPRESA = "Utzil Think"
 DESCRIPCION = "Utzil Remote - soporte a distancia de Utzil Think"
 RENDEZVOUS_SERVER = "212.227.240.121"
@@ -102,6 +103,11 @@ def iconos():
 
 def android():
     res = "flutter/android/app/src/main/res"
+    # Solo el applicationId: namespace y paquete Kotlin se quedan en
+    # com.carriez.flutter_hbb, que es a lo que van ligadas las funciones JNI.
+    cambiar("flutter/android/app/build.gradle", [
+        ('applicationId "com.carriez.flutter_hbb"', f'applicationId "{ID_ANDROID}"'),
+    ])
     cambiar("flutter/android/app/src/main/AndroidManifest.xml", [
         ('android:label="RustDesk"', f'android:label="{NOMBRE}"'),
         ('android:label="RustDesk Input"', f'android:label="{NOMBRE} Input"'),
