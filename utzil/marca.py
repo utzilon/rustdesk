@@ -8,6 +8,8 @@ repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
 - Servidor y llave fijos (RENDEZVOUS_SERVER y RS_PUB_KEY, abajo). La 1.5.0 ya no
   los lee de variables al compilar: son constantes de hbb_common/src/config.rs.
 - Metadatos del exe (Utzil Think).
+- Android: nombre y ícono del launcher. Lo llama flutter/ndk_arm64.sh, porque el
+  job de Android no pasa por build.py.
 - Íconos: salen de res/utzil-remote/ (utzil-remote.ico, utzil-remote.svg y
   png/utzil-remote-<px>.png, copia de Empresa\\Productos\\Utzil Remote\\icono). Para
   cambiar el ícono basta con reemplazar esos archivos y volver a correr el workflow.
@@ -98,10 +100,31 @@ def iconos():
     copiar("utzil-remote.svg", "flutter/assets/icon.svg")
 
 
+def android():
+    res = "flutter/android/app/src/main/res"
+    cambiar("flutter/android/app/src/main/AndroidManifest.xml", [
+        ('android:label="RustDesk"', f'android:label="{NOMBRE}"'),
+        ('android:label="RustDesk Input"', f'android:label="{NOMBRE} Input"'),
+    ])
+    cambiar(f"{res}/values/strings.xml", [
+        ('<string name="app_name">RustDesk</string>', f'<string name="app_name">{NOMBRE}</string>'),
+    ])
+    # El ícono adaptativo de RustDesk (Android 8+) le gana a los png: se quita
+    # para que el launcher use el de la diseñadora. Por densidad va el png de
+    # ella que más se acerca hacia arriba; Android lo escala al dibujarlo.
+    for xml in ("ic_launcher.xml", "ic_launcher_round.xml"):
+        Path(f"{res}/mipmap-anydpi-v26/{xml}").unlink(missing_ok=True)
+    for densidad, px in (("mdpi", 48), ("hdpi", 128), ("xhdpi", 128), ("xxhdpi", 256), ("xxxhdpi", 256)):
+        for nombre in ("ic_launcher.png", "ic_launcher_round.png"):
+            shutil.copyfile(f"{ICONOS}/png/utzil-remote-{px}.png", f"{res}/mipmap-{densidad}/{nombre}")
+    print("marca: android")
+
+
 def aplicar():
     servidor()
     metadatos()
     iconos()
+    android()
 
 
 if __name__ == "__main__":
