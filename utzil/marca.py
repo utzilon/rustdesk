@@ -8,6 +8,7 @@ repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
 - Servidor y llave fijos (RENDEZVOUS_SERVER y RS_PUB_KEY, abajo). La 1.5.0 ya no
   los lee de variables al compilar: son constantes de hbb_common/src/config.rs.
 - Metadatos del exe (Utzil Think).
+- ID propio (no el mismo que RustDesk en el equipo) y carpeta propia del portátil.
 - Android: nombre y ícono del launcher. Lo llama flutter/ndk_arm64.sh, porque el
   job de Android no pasa por build.py.
 - Íconos: salen de res/utzil-remote/ (utzil-remote.ico, utzil-remote.svg y
@@ -30,6 +31,12 @@ DESCRIPCION = "Utzil Remote - soporte a distancia de Utzil Think"
 RENDEZVOUS_SERVER = "212.227.240.121"
 RS_PUB_KEY = "gM6BxGwVwshb6CIjHzqsD+fqSBuhvLxzEwuHn5lyaFM="
 ICONOS = "res/utzil-remote"
+# Se mezcla con el ID que sale de la MAC: sin esto Utzil Remote saca el MISMO ID
+# que un RustDesk oficial en el equipo y le cambia la llave en hbbs. Son los
+# primeros 4 bytes de sha256("Utzil Remote"), para que no sea un número al azar.
+SAL_ID = "0xcb64cbdb"
+# Carpeta donde se desempaca el portátil en %LOCALAPPDATA% (la de RustDesk es "rustdesk").
+CARPETA_PORTATIL = "utzil remote"
 DERECHOS = "Utzil Think. Basado en RustDesk (AGPL-3.0): github.com/utzilon/rustdesk"
 
 
@@ -55,6 +62,8 @@ def servidor():
          f'pub const RENDEZVOUS_SERVERS: &[&str] = &["{rs}"];'),
         ('pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";',
          f'pub const RS_PUB_KEY: &str = "{llave}";'),
+        ("                id &= 0x1FFFFFFF;",
+         f"                id ^= {SAL_ID}; // Utzil Remote: distinto del ID de RustDesk en el mismo equipo\n                id &= 0x1FFFFFFF;"),
     ])
 
 
@@ -101,6 +110,17 @@ def iconos():
     copiar("utzil-remote.svg", "flutter/assets/icon.svg")
 
 
+def portatil():
+    # El portátil nombra su carpeta con el exe que lleva adentro (rustdesk.exe, que
+    # el workflow pasa fijo a generate.py); así compartía la del RustDesk oficial.
+    cambiar("libs/portable/src/main.rs", [
+        ("""fn app_dir_name(exe: &str) -> String {
+    Path::new(&exe.replace('\\\\', "/"))""",
+         f"""fn app_dir_name(_exe: &str) -> String {{
+    Path::new("{CARPETA_PORTATIL}")"""),
+    ])
+
+
 def android():
     res = "flutter/android/app/src/main/res"
     # Solo el applicationId: namespace y paquete Kotlin se quedan en
@@ -130,6 +150,7 @@ def aplicar():
     servidor()
     metadatos()
     iconos()
+    portatil()
     android()
 
 
