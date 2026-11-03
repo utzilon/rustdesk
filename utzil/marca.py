@@ -43,7 +43,12 @@ DERECHOS = "Utzil Think. Basado en RustDesk (AGPL-3.0): github.com/utzilon/rustd
 def cambiar(ruta, pares):
     p = Path(ruta)
     texto = p.read_bytes().decode("utf-8")  # bytes: sin tocar los fines de línea
+    # En el runner de Windows el checkout trae CRLF: un par de varias líneas escrito
+    # con \n no casaba y el build de Windows se cortaba (corrida 41558302503).
+    crlf = "\r\n" in texto
     for viejo, nuevo in pares:
+        if crlf:
+            viejo, nuevo = viejo.replace("\n", "\r\n"), nuevo.replace("\n", "\r\n")
         if nuevo in texto:
             continue
         if viejo not in texto:
