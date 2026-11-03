@@ -4,7 +4,10 @@ La llama build.py al arrancar, así que corre dentro del workflow de upstream
 (Flutter Tag Build) sin tocar .github/. Se puede correr sola desde la raíz del
 repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
 
-- Nombre «Utzil Remote» (APP_NAME: ventana, servicio, carpeta y exe instalados).
+- Nombre: por dentro «UtzilRemote» (APP_NAME: servicio, carpeta de Program Files,
+  registro, pipe y exe instalados; el instalador de Windows solo acepta
+  [a-zA-Z0-9-]+) y a la vista «Utzil Remote» (pantallas, título de la ventana,
+  bandeja y Agregar o quitar programas).
 - Servidor y llave fijos (RENDEZVOUS_SERVER y RS_PUB_KEY, abajo). La 1.5.0 ya no
   los lee de variables al compilar: son constantes de hbb_common/src/config.rs.
 - Metadatos del exe (Utzil Think).
@@ -25,6 +28,9 @@ import sys
 from pathlib import Path
 
 NOMBRE = "Utzil Remote"
+# APP_NAME: el instalador de Windows lo rechaza con espacios («Application name must
+# match [a-zA-Z0-9-]+»), así que por dentro va sin ellos y NOMBRE queda solo a la vista.
+NOMBRE_INTERNO = "UtzilRemote"
 ID_ANDROID = "mx.utzilon.remote"
 EMPRESA = "Utzil Think"
 DESCRIPCION = "Utzil Remote - soporte a distancia de Utzil Think"
@@ -62,7 +68,7 @@ def servidor():
     rs, llave = RENDEZVOUS_SERVER, RS_PUB_KEY
     cambiar("libs/hbb_common/src/config.rs", [
         ('APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned())',
-         f'APP_NAME: RwLock<String> = RwLock::new("{NOMBRE}".to_owned())'),
+         f'APP_NAME: RwLock<String> = RwLock::new("{NOMBRE_INTERNO}".to_owned())'),
         ('pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];',
          f'pub const RENDEZVOUS_SERVERS: &[&str] = &["{rs}"];'),
         ('pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";',
@@ -91,6 +97,39 @@ def metadatos():
     # El nombre con que se busca la ventana ya abierta antes de que cargue la DLL.
     cambiar("flutter/windows/runner/main.cpp", [
         ('std::wstring app_name = L"RustDesk";', f'std::wstring app_name = L"{NOMBRE}";'),
+    ])
+
+
+def nombre_visible():
+    # Lo que se lee en pantalla dice NOMBRE aunque APP_NAME sea NOMBRE_INTERNO.
+    cambiar("src/flutter_ffi.rs", [
+        ("""pub fn main_get_app_name() -> String {
+    get_app_name()
+}""", f"""pub fn main_get_app_name() -> String {{
+    "{NOMBRE}".to_owned()
+}}"""),
+        ("SyncReturn(get_app_name())", f'SyncReturn("{NOMBRE}".to_owned())'),
+    ])
+    # Título de la ventana; main.cpp busca la ventana abierta con este mismo nombre.
+    cambiar("src/flutter.rs", [
+        ("let name = crate::platform::wide_string(&crate::get_app_name());",
+         f'let name = crate::platform::wide_string("{NOMBRE}");'),
+    ])
+    cambiar("src/tray.rs", [
+        ("""                crate::get_app_name(),
+                translate("Service is running".to_owned()),""",
+         f"""                "{NOMBRE}",
+                translate("Service is running".to_owned()),"""),
+        ("""                crate::get_app_name(),
+                translate("Ready".to_owned()),""",
+         f"""                "{NOMBRE}",
+                translate("Ready".to_owned()),"""),
+    ])
+    # Agregar o quitar programas y la lista de servicios.
+    cambiar("src/platform/windows.rs", [
+        ('/v DisplayName /t REG_SZ /d \\"{app_name}\\"', f'/v DisplayName /t REG_SZ /d \\"{NOMBRE}\\"'),
+        ('/v Publisher /t REG_SZ /d \\"{app_name}\\"', f'/v Publisher /t REG_SZ /d \\"{NOMBRE}\\"'),
+        ('DisplayName= \\"{app_name} Service\\"', f'DisplayName= \\"{NOMBRE} Service\\"'),
     ])
 
 
@@ -154,6 +193,7 @@ def android():
 def aplicar():
     servidor()
     metadatos()
+    nombre_visible()
     iconos()
     portatil()
     android()
