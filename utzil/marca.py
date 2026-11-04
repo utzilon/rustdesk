@@ -12,7 +12,7 @@ repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
   los lee de variables al compilar: son constantes de hbb_common/src/config.rs.
 - Metadatos del exe (Utzil Think).
 - ID propio (no el mismo que RustDesk en el equipo) y carpeta propia del portátil.
-- Android: nombre y ícono del launcher. Lo llama flutter/ndk_arm64.sh, porque el
+- Android: nombre y ícono del launcher, y la notificación del servicio. Lo llama flutter/ndk_arm64.sh, porque el
   job de Android no pasa por build.py.
 - Íconos: salen de res/utzil-remote/ (utzil-remote.ico, utzil-remote.svg y
   png/utzil-remote-<px>.png, copia de Empresa\\Productos\\Utzil Remote\\icono). Para
@@ -178,6 +178,14 @@ def android():
     ])
     cambiar(f"{res}/values/strings.xml", [
         ('<string name="app_name">RustDesk</string>', f'<string name="app_name">{NOMBRE}</string>'),
+    ])
+    # La notificación del servicio y su canal en Ajustes. El id del canal se queda
+    # en "RustDesk": con el mismo id Android le cambia el nombre al canal que ya
+    # estaba creado en el teléfono, en vez de dejar uno viejo al lado.
+    cambiar("flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt", [
+        ('const val DEFAULT_NOTIFY_TITLE = "RustDesk"', f'const val DEFAULT_NOTIFY_TITLE = "{NOMBRE}"'),
+        ('val channelName = "RustDesk Service"', f'val channelName = "{NOMBRE} Service"'),
+        ('description = "RustDesk Service Channel"', f'description = "{NOMBRE} Service Channel"'),
     ])
     # El ícono adaptativo de RustDesk (Android 8+) le gana a los png: se quita
     # para que el launcher use el de la diseñadora. Por densidad va el png de
