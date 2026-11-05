@@ -4,10 +4,10 @@ La llama build.py al arrancar, así que corre dentro del workflow de upstream
 (Flutter Tag Build) sin tocar .github/. Se puede correr sola desde la raíz del
 repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
 
-- Nombre: por dentro «UtzilRemote» (APP_NAME: servicio, carpeta de Program Files,
-  registro, pipe y exe instalados; el instalador de Windows solo acepta
-  [a-zA-Z0-9-]+) y a la vista «Utzil Remote» (pantallas, título de la ventana,
-  bandeja y Agregar o quitar programas).
+- Nombre: APP_NAME es «Utzil Remote», y de él salen las carpetas y archivos del
+  config en Windows y en Android. El instalador de Windows solo acepta
+  [a-zA-Z0-9-]+, así que lo que arman sus scripts (carpeta de Program Files,
+  servicio, exe, registro, accesos directos) va con «UtzilRemote», aparte.
 - Servidor y llave fijos (RENDEZVOUS_SERVER y RS_PUB_KEY, abajo). La 1.5.0 ya no
   los lee de variables al compilar: son constantes de hbb_common/src/config.rs.
 - Metadatos del exe (Utzil Think).
@@ -28,8 +28,11 @@ import sys
 from pathlib import Path
 
 NOMBRE = "Utzil Remote"
-# APP_NAME: el instalador de Windows lo rechaza con espacios («Application name must
-# match [a-zA-Z0-9-]+»), así que por dentro va sin ellos y NOMBRE queda solo a la vista.
+# APP_NAME es NOMBRE: el config vive en carpetas y archivos con ese nombre (en Windows
+# %APPDATA%\\Utzil Remote\\config\\Utzil Remote.toml; en Android Utzil Remote.toml), y
+# si cambia, la app no encuentra el config de antes y saca otro ID (pasó con 17d5905).
+# El instalador de Windows rechaza nombres con espacios («Application name must match
+# [a-zA-Z0-9-]+»): lo que va en sus scripts usa NOMBRE_INTERNO (ver instalacion()).
 NOMBRE_INTERNO = "UtzilRemote"
 ID_ANDROID = "mx.utzilon.remote"
 EMPRESA = "Utzil Think"
@@ -68,7 +71,7 @@ def servidor():
     rs, llave = RENDEZVOUS_SERVER, RS_PUB_KEY
     cambiar("libs/hbb_common/src/config.rs", [
         ('APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned())',
-         f'APP_NAME: RwLock<String> = RwLock::new("{NOMBRE_INTERNO}".to_owned())'),
+         f'APP_NAME: RwLock<String> = RwLock::new("{NOMBRE}".to_owned())'),
         ('pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];',
          f'pub const RENDEZVOUS_SERVERS: &[&str] = &["{rs}"];'),
         ('pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";',
@@ -100,8 +103,35 @@ def metadatos():
     ])
 
 
+def instalacion():
+    # Windows: carpeta de Program Files, servicio, exe, registro y accesos directos
+    # sin espacio, como los dejó 17d5905 (con eso la instalación ya funcionaba).
+    # El config no pasa por aquí: Config::file() sigue saliendo de APP_NAME.
+    cambiar("src/common.rs", [
+        ("""pub fn get_app_name() -> String {
+    hbb_common::config::APP_NAME.read().unwrap().clone()
+}""", f"""pub fn get_app_name() -> String {{
+    hbb_common::config::APP_NAME.read().unwrap().clone()
+}}
+
+/// Utzil Remote: el nombre sin espacio de lo instalado en Windows (Program Files,
+/// servicio, exe, registro). APP_NAME lleva espacio y el instalador no lo acepta.
+#[inline]
+pub fn get_app_exe_name() -> String {{
+    "{NOMBRE_INTERNO}".to_owned()
+}}"""),
+    ])
+    for ruta in ("src/platform/windows.rs", "src/platform/windows/installer_handoff.rs"):
+        cambiar(ruta, [("crate::get_app_name()", "crate::get_app_exe_name()")])
+    # Buscan el proceso por el nombre del exe, que es NOMBRE_INTERNO.exe.
+    for ruta in ("src/server/portable_service.rs", "src/updater.rs"):
+        cambiar(ruta, [('format!("{}.exe", crate::get_app_name().to_lowercase())',
+                        'format!("{}.exe", crate::get_app_exe_name().to_lowercase())')])
+
+
 def nombre_visible():
-    # Lo que se lee en pantalla dice NOMBRE aunque APP_NAME sea NOMBRE_INTERNO.
+    # Lo que se lee en pantalla dice NOMBRE. Con APP_NAME = NOMBRE ya saldría así,
+    # pero windows.rs arma Agregar o quitar programas con NOMBRE_INTERNO.
     cambiar("src/flutter_ffi.rs", [
         ("""pub fn main_get_app_name() -> String {
     get_app_name()
@@ -201,6 +231,7 @@ def android():
 def aplicar():
     servidor()
     metadatos()
+    instalacion()
     nombre_visible()
     iconos()
     portatil()
