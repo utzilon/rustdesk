@@ -10,6 +10,7 @@ repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
   servicio, exe, registro, accesos directos) va con «UtzilRemote», aparte.
 - Servidor y llave fijos (RENDEZVOUS_SERVER y RS_PUB_KEY, abajo). La 1.5.0 ya no
   los lee de variables al compilar: son constantes de hbb_common/src/config.rs.
+- Windows: copia el config que dejó e10dd34 en «UtzilRemote» (config_de_e10dd34).
 - Metadatos del exe (Utzil Think).
 - ID propio (no el mismo que RustDesk en el equipo) y carpeta propia del portátil.
 - Android: nombre y ícono del launcher, y la notificación del servicio. Lo llama flutter/ndk_arm64.sh, porque el
@@ -100,6 +101,66 @@ def metadatos():
     # El nombre con que se busca la ventana ya abierta antes de que cargue la DLL.
     cambiar("flutter/windows/runner/main.cpp", [
         ('std::wstring app_name = L"RustDesk";', f'std::wstring app_name = L"{NOMBRE}";'),
+    ])
+
+
+def config_de_e10dd34():
+    # Windows: e10dd34 (APP_NAME «UtzilRemote») guardaba el config en
+    # ...\\UtzilRemote\\config\\UtzilRemote.toml y UtzilRemote2.toml, en %APPDATA% del
+    # usuario y en el del servicio (LocalService). Al arrancar, si no existe NOMBRE\\config
+    # y sí la carpeta NOMBRE_INTERNO, se copian esos dos con los nombres nuevos. Se revisa
+    # NOMBRE\\config y no NOMBRE porque init_log crea NOMBRE\\log antes de leer el config
+    # (en el servicio siempre); config\\ solo se crea al guardar el config. Va en
+    # Config::load_, por donde pasa toda lectura del config.
+    copia = """    /// Utzil Remote (Windows): copia el config que dejó e10dd34 en «@VIEJO@» si
+    /// «@NUEVO@\\config» todavía no existe (el log ya pudo crear «@NUEVO@\\log»).
+    /// Copia, no mueve: la carpeta vieja queda igual.
+    #[cfg(windows)]
+    fn copiar_config_de_e10dd34() {
+        static UNA_VEZ: std::sync::Once = std::sync::Once::new();
+        UNA_VEZ.call_once(|| {
+            let archivo = Self::file_("");
+            let Some(carpeta_config) = archivo.parent() else {
+                return;
+            };
+            let Some(carpeta) = carpeta_config.parent() else {
+                return;
+            };
+            let carpeta_vieja = carpeta.with_file_name("@VIEJO@");
+            if carpeta_config.exists() || !carpeta_vieja.exists() {
+                return;
+            }
+            if let Err(err) = fs::create_dir_all(carpeta_config) {
+                log::error!("No se pudo crear {:?}: {err}", carpeta_config);
+                return;
+            }
+            for sufijo in ["", "2"] {
+                let viejo = carpeta_vieja
+                    .join("config")
+                    .join(format!("@VIEJO@{sufijo}.toml"));
+                if !viejo.exists() {
+                    continue;
+                }
+                let nuevo = Self::file_(sufijo);
+                match fs::copy(&viejo, &nuevo) {
+                    Ok(_) => log::info!("Config copiado de {:?} a {:?}", viejo, nuevo),
+                    Err(err) => log::error!("No se pudo copiar {:?} a {:?}: {err}", viejo, nuevo),
+                }
+            }
+        });
+    }
+
+    fn load_<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
+        suffix: &str,
+    ) -> T {
+        #[cfg(windows)]
+        Self::copiar_config_de_e10dd34();
+        let file = Self::file_(suffix);""".replace("@VIEJO@", NOMBRE_INTERNO).replace("@NUEVO@", NOMBRE)
+    cambiar("libs/hbb_common/src/config.rs", [
+        ("""    fn load_<T: serde::Serialize + serde::de::DeserializeOwned + Default + std::fmt::Debug>(
+        suffix: &str,
+    ) -> T {
+        let file = Self::file_(suffix);""", copia),
     ])
 
 
@@ -230,6 +291,7 @@ def android():
 
 def aplicar():
     servidor()
+    config_de_e10dd34()
     metadatos()
     instalacion()
     nombre_visible()
