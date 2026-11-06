@@ -614,7 +614,7 @@ jobs:
         job:
           - {
               target: aarch64-apple-darwin,
-              os: macos-14,
+              os: macos-15, # macos-14 ya no existe en GitHub (corrida 42305941610); macos-15 es arm64
               extra-build-args: "--screencapturekit",
               arch: aarch64,
               vcpkg-triplet: arm64-osx,
