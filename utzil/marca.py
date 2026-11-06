@@ -13,10 +13,13 @@ repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
 - Windows: copia el config que dejó e10dd34 en «UtzilRemote» (config_de_e10dd34).
 - Metadatos del exe (Utzil Think).
 - ID propio (no el mismo que RustDesk en el equipo) y carpeta propia del portátil.
+- macOS (arm64): UtzilRemote.app con bundle id ID_APP, nombre visible, ícono y
+  el de la barra de menú (macos()).
 - Android: nombre y ícono del launcher, y la notificación del servicio. Lo llama flutter/ndk_arm64.sh, porque el
   job de Android no pasa por build.py.
 - Íconos: salen de res/utzil-remote/ (utzil-remote.ico, utzil-remote.svg y
-  png/utzil-remote-<px>.png, copia de Empresa\\Productos\\Utzil Remote\\icono). Para
+  png/utzil-remote-<px>.png, copia de Empresa\\Productos\\Utzil Remote\\icono; y
+  mac-tray-60.png, el utzil-remote-negro.svg de esa carpeta pasado a 60 px). Para
   cambiar el ícono basta con reemplazar esos archivos y volver a correr el workflow.
 
 Si ya se aplicó, no hace nada. Si un texto que se reemplaza ya no está (otra
@@ -25,6 +28,7 @@ marca vieja.
 """
 
 import shutil
+import struct
 import sys
 from pathlib import Path
 
@@ -34,8 +38,10 @@ NOMBRE = "Utzil Remote"
 # si cambia, la app no encuentra el config de antes y saca otro ID (pasó con 17d5905).
 # El instalador de Windows rechaza nombres con espacios («Application name must match
 # [a-zA-Z0-9-]+»): lo que va en sus scripts usa NOMBRE_INTERNO (ver instalacion()).
+# En macOS APP_NAME es NOMBRE_INTERNO (ver macos()).
 NOMBRE_INTERNO = "UtzilRemote"
-ID_ANDROID = "mx.utzilon.remote"
+# applicationId de Android y bundle id de macOS.
+ID_APP = "mx.utzilon.remote"
 EMPRESA = "Utzil Think"
 DESCRIPCION = "Utzil Remote - soporte a distancia de Utzil Think"
 RENDEZVOUS_SERVER = "212.227.240.121"
@@ -72,7 +78,8 @@ def servidor():
     rs, llave = RENDEZVOUS_SERVER, RS_PUB_KEY
     cambiar("libs/hbb_common/src/config.rs", [
         ('APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned())',
-         f'APP_NAME: RwLock<String> = RwLock::new("{NOMBRE}".to_owned())'),
+         'APP_NAME: RwLock<String> = RwLock::new(String::from(if cfg!(target_os = "macos") '
+         f'{{ "{NOMBRE_INTERNO}" }} else {{ "{NOMBRE}" }}))'),
         ('pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];',
          f'pub const RENDEZVOUS_SERVERS: &[&str] = &["{rs}"];'),
         ('pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";',
@@ -256,12 +263,59 @@ def portatil():
     ])
 
 
+def icns(destino):
+    # AppIcon.icns con los png de la diseñadora tal cual, sin reescalar: cada tipo
+    # del icns lleva un PNG adentro (16 a 1024 px, con sus @2x).
+    tipos = (("icp4", 16), ("icp5", 32), ("icp6", 64), ("ic07", 128), ("ic08", 256),
+             ("ic09", 512), ("ic10", 1024), ("ic11", 32), ("ic12", 64), ("ic13", 256),
+             ("ic14", 512))
+    partes = b""
+    for tipo, px in tipos:
+        png = Path(f"{ICONOS}/png/utzil-remote-{px}.png").read_bytes()
+        partes += tipo.encode() + struct.pack(">I", len(png) + 8) + png
+    Path(destino).write_bytes(b"icns" + struct.pack(">I", len(partes) + 8) + partes)
+    print(f"ícono: {destino}")
+
+
+def macos():
+    # Los scripts que instalan el servicio (src/platform/privileges_scripts, pasados
+    # por correct_app_name) arman rutas sin comillas con APP_NAME, así que en Mac
+    # APP_NAME es NOMBRE_INTERNO (ver servidor()): /Applications/UtzilRemote.app,
+    # com.carriez.UtzilRemote_service y ~/Library/Preferences/com.carriez.UtzilRemote.
+    # A la vista (barra de menú, Dock) dice NOMBRE.
+    cambiar("flutter/macos/Runner/Configs/AppInfo.xcconfig", [
+        ("PRODUCT_NAME = RustDesk",
+         f"PRODUCT_NAME = {NOMBRE_INTERNO}\n\n// El módulo de Swift sigue llamándose RustDesk (MainMenu.xib lo nombra).\n"
+         "PRODUCT_MODULE_NAME = RustDesk"),
+        ("PRODUCT_BUNDLE_IDENTIFIER = com.carriez.flutterHbb", f"PRODUCT_BUNDLE_IDENTIFIER = {ID_APP}"),
+        ("PRODUCT_COPYRIGHT = Copyright © 2026 Purslane Tech Pte. Ltd. All rights reserved.",
+         f"PRODUCT_COPYRIGHT = {DERECHOS}"),
+    ])
+    # El target Runner fija su propio bundle id y le gana al xcconfig.
+    cambiar("flutter/macos/Runner.xcodeproj/project.pbxproj", [
+        ("PRODUCT_BUNDLE_IDENTIFIER = com.carriez.rustdesk;", f"PRODUCT_BUNDLE_IDENTIFIER = {ID_APP};"),
+    ])
+    cambiar("flutter/macos/Runner/Info.plist", [
+        ("""	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>""", f"""	<key>CFBundleName</key>
+	<string>{NOMBRE}</string>
+	<key>CFBundleDisplayName</key>
+	<string>{NOMBRE}</string>"""),
+    ])
+    # build.py copia el binario del servicio en Release/UtzilRemote.app (ese cambio va
+    # en build.py mismo: cuando corre esto, build.py ya está cargado).
+    icns("flutter/macos/Runner/AppIcon.icns")
+    # Barra de menú: se usa como plantilla (solo cuenta la transparencia).
+    shutil.copyfile(f"{ICONOS}/mac-tray-60.png", "res/mac-tray-dark-x2.png")
+    print("ícono: res/mac-tray-dark-x2.png")
+
+
 def android():
     res = "flutter/android/app/src/main/res"
     # Solo el applicationId: namespace y paquete Kotlin se quedan en
     # com.carriez.flutter_hbb, que es a lo que van ligadas las funciones JNI.
     cambiar("flutter/android/app/build.gradle", [
-        ('applicationId "com.carriez.flutter_hbb"', f'applicationId "{ID_ANDROID}"'),
+        ('applicationId "com.carriez.flutter_hbb"', f'applicationId "{ID_APP}"'),
     ])
     cambiar("flutter/android/app/src/main/AndroidManifest.xml", [
         ('android:label="RustDesk"', f'android:label="{NOMBRE}"'),
@@ -297,6 +351,7 @@ def aplicar():
     nombre_visible()
     iconos()
     portatil()
+    macos()
     android()
 
 
