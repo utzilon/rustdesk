@@ -9,12 +9,13 @@
 # archivos del bridge de Flutter que van con ella), se pone la marca y se prepara Flutter;
 # Xcode Cloud compila la app y la firma con la cuenta del equipo.
 #
-# La librería se toma de la release del commit más cercano hacia atrás que tenga
-# una, SOLO si desde ese commit no cambió nada de lo que entra en ella (src, libs,
-# Cargo, build.rs, utzil/). Así un arreglo que solo toca lo de Xcode (este script,
-# por ejemplo) no obliga a recompilar una hora de Rust. Si cambió algo, o no hay
-# ninguna, se para aquí y lo dice: hay que correr utzil-remote-ios.yml sobre el
-# commit que se etiqueta.
+# Se usa la release de este mismo commit si la hay; si no, la que dice
+# libreria-ios.txt, SOLO si la huella de lo que entra en la librería (src, libs,
+# Cargo, build.rs, utzil/) es la misma. Así un arreglo que solo toca lo de Xcode
+# (este script, por ejemplo) no obliga a recompilar una hora de Rust. Va por
+# huella y no por historial porque Xcode Cloud clona sin historial: con
+# `git rev-list` solo veía el commit etiquetado (corrida 1, 2026-11-07). Si la
+# huella no cuadra, se para aquí y lo dice.
 set -e
 
 RAIZ="${CI_PRIMARY_REPOSITORY_PATH:-$(cd "$(dirname "$0")/../../.." && pwd)}"
@@ -25,23 +26,27 @@ RELEASES="https://github.com/utzilon/rustdesk/releases/download"
 cd "$RAIZ"
 
 echo "--- Librería de Rust para el commit $COMMIT"
-BASE=""
-for c in $(git rev-list --max-count=30 "$COMMIT" 2>/dev/null || echo "$COMMIT"); do
-  if curl -fsSL --retry 2 "$RELEASES/ios-lib-$c/$LIB.sha256" -o "/tmp/$LIB.sha256" 2>/dev/null; then
-    BASE="$c"
-    break
+PIN="$RAIZ/flutter/ios/ci_scripts/libreria-ios.txt"
+huella() { # commit → git rev-parse de lo que entra en la librería, en una línea
+  for r in src libs Cargo.toml Cargo.lock build.rs utzil; do git rev-parse "$1:$r"; done | tr '\n' ' ' | sed 's/ $//'
+}
+if curl -fsSL --retry 2 "$RELEASES/ios-lib-$COMMIT/$LIB.sha256" -o "/tmp/$LIB.sha256" 2>/dev/null; then
+  BASE="$COMMIT"
+else
+  BASE="$(sed -n 's/^commit //p' "$PIN")"
+  ESPERADA="$(sed -n 's/^huella //p' "$PIN")"
+  ACTUAL="$(huella HEAD)"
+  if [ -z "$BASE" ] || [ "$ESPERADA" != "$ACTUAL" ]; then
+    echo "ERROR: este commit no tiene release propia y su código de librería no es el de libreria-ios.txt ($BASE)."
+    echo "       huella esperada: $ESPERADA"
+    echo "       huella de aquí:  $ACTUAL"
+    echo "       Corre utzil-remote-ios.yml sobre $COMMIT, pon su commit y su huella en libreria-ios.txt y vuelve a etiquetar."
+    exit 1
   fi
-done
-if [ -z "$BASE" ]; then
-  echo "ERROR: ningún commit de los últimos 30 tiene la release ios-lib-<commit>."
-  echo "       Corre utzil-remote-ios.yml sobre $COMMIT y vuelve a etiquetar."
-  exit 1
-fi
-if [ "$BASE" != "$COMMIT" ] && ! git diff --quiet "$BASE" "$COMMIT" -- src libs Cargo.toml Cargo.lock build.rs utzil; then
-  echo "ERROR: la librería más cercana es la de $BASE, y desde ahí cambió código que entra en ella:"
-  git diff --stat "$BASE" "$COMMIT" -- src libs Cargo.toml Cargo.lock build.rs utzil
-  echo "       Corre utzil-remote-ios.yml sobre $COMMIT y vuelve a etiquetar."
-  exit 1
+  if ! curl -fsSL --retry 3 "$RELEASES/ios-lib-$BASE/$LIB.sha256" -o "/tmp/$LIB.sha256"; then
+    echo "ERROR: no pude bajar la release ios-lib-$BASE de libreria-ios.txt."
+    exit 1
+  fi
 fi
 echo "    de la release ios-lib-$BASE"
 curl -fsSL --retry 3 "$RELEASES/ios-lib-$BASE/$LIB" -o "/tmp/$LIB"
