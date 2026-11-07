@@ -11,6 +11,15 @@ name: Utzil Remote (Windows x64 + Android arm64 + macOS arm64)
 
 on:
   workflow_dispatch:
+    inputs:
+      solo_android_aab:
+        description: "Solo el AAB de Android para Google Play (arm64-v8a, sin firmar). No compila Windows ni macOS."
+        type: boolean
+        default: false
+      version_code:
+        description: "versionCode del AAB: tiene que ser mayor que el del APK ya instalado (2068 = 2000 + build del split arm64)."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -146,6 +155,7 @@ jobs:
             ./flutter/ios/Runner/bridge_generated.h
 
   build-RustDeskTempTopMostWindow:
+    if: ${{ !inputs.solo_android_aab }}
     runs-on: windows-2022
     env:
       project_path: WindowInjection/WindowInjection.vcxproj
@@ -171,6 +181,7 @@ jobs:
               ./${{ env.build_output_dir }}/WindowInjection.dll
 
   build-windows-x64:
+    if: ${{ !inputs.solo_android_aab }}
     name: ${{ matrix.job.target }}
     needs: [build-RustDeskTempTopMostWindow, generate-bridge]
     runs-on: ${{ matrix.job.os }}
@@ -371,7 +382,7 @@ jobs:
 
   build-android-arm64:
     needs: [generate-bridge]
-    name: build rustdesk android apk ${{ matrix.job.target }}
+    name: build rustdesk android ${{ inputs.solo_android_aab && 'aab' || 'apk' }} ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
@@ -551,6 +562,22 @@ jobs:
           export PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH
           # Increase Gradle JVM memory for CI builds
           sed -i "s/org.gradle.jvmargs=-Xmx1024M/org.gradle.jvmargs=-Xmx2g/g" ./flutter/android/gradle.properties
+          if [[ "${{ inputs.solo_android_aab }}" == "true" ]]; then
+            # AAB para Google Play: SIN firmar. La llave de la app no vive en GitHub;
+            # se firma fuera, en cicd-185, con la misma del APK.
+            [[ "${{ inputs.version_code }}" =~ ^[0-9]+$ ]] || { echo "Falta version_code (número)"; exit 1; }
+            sed -i "s/^\(\s*\)signingConfig signingConfigs.release/\1signingConfig null/" ./flutter/android/app/build.gradle
+            mkdir -p ./flutter/android/app/src/main/jniLibs/arm64-v8a
+            cp ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/
+            cp ./target/${{ matrix.job.target }}/release/liblibrustdesk.so ./flutter/android/app/src/main/jniLibs/arm64-v8a/librustdesk.so
+            pushd flutter
+            flutter build appbundle --release --target-platform android-arm64 --build-number "${{ inputs.version_code }}"
+            popd
+            mkdir -p signed-apk
+            mv flutter/build/app/outputs/bundle/release/app-release.aab "signed-apk/utzil-remote-${{ env.VERSION }}-${{ inputs.version_code }}-arm64-v8a-sin-firmar.aab"
+            (cd signed-apk && sha256sum *.aab | tee "$(ls *.aab).sha256")
+            exit 0
+          fi
           # temporary use debug sign config
           sed -i "s/signingConfigs.release/signingConfigs.debug/g" ./flutter/android/app/build.gradle
           case ${{ matrix.job.target }} in
@@ -596,15 +623,24 @@ jobs:
           mv ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk .
 
       - name: Upload Utzil Remote apk
+        if: ${{ !inputs.solo_android_aab }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: utzil-remote-android-arm64
           path: signed-apk/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk
 
+      - name: Upload Utzil Remote aab
+        if: ${{ inputs.solo_android_aab }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: utzil-remote-android-aab
+          path: signed-apk/
+
   # El build-for-macOS de flutter-build.yml de la 1.5.0, solo aarch64 (Apple Silicon)
   # y sin los pasos de firma, notarización ni release: el .dmg sale sin firma
   # Developer ID (la app va firmada ad hoc, como la deja Xcode) y queda como artifact.
   build-macos-arm64:
+    if: ${{ !inputs.solo_android_aab }}
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]

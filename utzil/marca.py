@@ -352,6 +352,9 @@ def android():
     ])
     cambiar(f"{res}/values/strings.xml", [
         ('<string name="app_name">RustDesk</string>', f'<string name="app_name">{NOMBRE}</string>'),
+        # El subtipo del servicio specialUse: es el texto que lee Google Play al
+        # revisar la declaración del tipo de servicio en primer plano.
+        ('Keeps the RustDesk remote desktop host available', f'Keeps the {NOMBRE} desktop host available'),
     ])
     # La notificación del servicio y su canal en Ajustes. El id del canal se queda
     # en "RustDesk": con el mismo id Android le cambia el nombre al canal que ya
