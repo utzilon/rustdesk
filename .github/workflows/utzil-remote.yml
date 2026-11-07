@@ -735,6 +735,21 @@ jobs:
           fi
           ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
 
+      # Firma AD HOC de toda la app, de adentro hacia afuera (card Za4RsMnH). Xcode
+      # firma la app al compilar, pero build.py mete `service` DESPUÉS, y eso rompe el
+      # sello («a sealed resource is missing or invalid»). Y FlutterMacOS.framework
+      # trae la firma de otro equipo: con el runtime endurecido dyld se negaba a
+      # cargarlo («different Team IDs») y la app tronaba al abrir. El script de
+      # upstream firma frameworks y dylibs, luego el service y al final la app, todo
+      # con la misma identidad; con `-` es ad hoc, sin llaves. Al final verifica
+      # --deep --strict.
+      - name: Firma ad hoc de toda la app
+        run: |
+          bash ./.github/scripts/sign-macos-app.sh \
+            ./flutter/build/macos/Build/Products/Release/UtzilRemote.app \
+            - \
+            ./flutter/macos/Runner/Release.entitlements
+
       # La app es UtzilRemote.app (PRODUCT_NAME de utzil/marca.py); el volumen dice Utzil Remote.
       - name: Create unsigned dmg
         run: |
@@ -743,6 +758,30 @@ jobs:
           sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
           create-dmg --volname "Utzil Remote" --icon "UtzilRemote.app" 200 190 --hide-extension "UtzilRemote.app" --window-size 800 400 --app-drop-link 600 185 Utzil-Remote-${{ env.VERSION }}-arm64.dmg ./flutter/build/macos/Build/Products/Release/UtzilRemote.app
           shasum -a 256 Utzil-Remote-${{ env.VERSION }}-arm64.dmg
+
+      # Lo que hace la persona: abrir el .dmg, copiar la app a Aplicaciones y abrirla.
+      # Si dyld no la deja cargar, truena en el primer segundo; se le dan 30.
+      - name: Comprueba el .dmg (firma y arranque real)
+        run: |
+          MONTAJE="$(mktemp -d)"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MONTAJE" Utzil-Remote-${{ env.VERSION }}-arm64.dmg
+          ditto "$MONTAJE/UtzilRemote.app" /Applications/UtzilRemote.app
+          hdiutil detach "$MONTAJE"
+          codesign --verify --deep --strict --verbose=2 /Applications/UtzilRemote.app
+          codesign -dv /Applications/UtzilRemote.app/Contents/Frameworks/FlutterMacOS.framework 2>&1 | grep -E "Signature|TeamIdentifier" || true
+          /Applications/UtzilRemote.app/Contents/MacOS/UtzilRemote > arranque.log 2>&1 &
+          PID=$!
+          sleep 30
+          if kill -0 "$PID" 2>/dev/null; then
+            echo "✓ UtzilRemote sigue vivo a los 30 s"
+            kill "$PID" || true
+          else
+            RC=0; wait "$PID" || RC=$?
+            echo "✗ UtzilRemote se cerró (rc=$RC)"; cat arranque.log; exit 1
+          fi
+          if grep -E "Library not loaded|different Team IDs|code signature" arranque.log; then
+            cat arranque.log; exit 1
+          fi
 
       - name: Upload Utzil Remote dmg
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
