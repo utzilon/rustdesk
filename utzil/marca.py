@@ -15,11 +15,14 @@ repo, con el submódulo libs/hbb_common ya bajado: python utzil/marca.py
 - ID propio (no el mismo que RustDesk en el equipo) y carpeta propia del portátil.
 - macOS (arm64): UtzilRemote.app con bundle id ID_APP, nombre visible, ícono y
   el de la barra de menú (macos()).
+- iOS (iPhone y iPad): bundle id ID_APP, equipo de Apple, nombre visible e íconos
+  (ios()). Lo llama flutter/ios/ci_scripts/ci_post_clone.sh en Xcode Cloud.
 - Android: nombre y ícono del launcher, y la notificación del servicio. Lo llama flutter/ndk_arm64.sh, porque el
   job de Android no pasa por build.py.
 - Íconos: salen de res/utzil-remote/ (utzil-remote.ico, utzil-remote.svg y
   png/utzil-remote-<px>.png, copia de Empresa\\Productos\\Utzil Remote\\icono; y
-  mac-tray-60.png, el utzil-remote-negro.svg de esa carpeta pasado a 60 px). Para
+  mac-tray-60.png, el utzil-remote-negro.svg de esa carpeta pasado a 60 px; e
+  ios/, los mismos png sobre fondo blanco porque iOS no acepta transparencia). Para
   cambiar el ícono basta con reemplazar esos archivos y volver a correr el workflow.
 
 Si ya se aplicó, no hace nada. Si un texto que se reemplaza ya no está (otra
@@ -40,8 +43,11 @@ NOMBRE = "Utzil Remote"
 # [a-zA-Z0-9-]+»): lo que va en sus scripts usa NOMBRE_INTERNO (ver instalacion()).
 # En macOS APP_NAME es NOMBRE_INTERNO (ver macos()).
 NOMBRE_INTERNO = "UtzilRemote"
-# applicationId de Android y bundle id de macOS.
+# applicationId de Android y bundle id de macOS y de iOS.
 ID_APP = "mx.utzilon.remote"
+# El equipo de Apple Developer de Utzil Think (el de las apps de móvil). Xcode Cloud
+# firma con él; aquí solo va el identificador, ninguna llave.
+EQUIPO_APPLE = "TZDY88D2UG"
 EMPRESA = "Utzil Think"
 DESCRIPCION = "Utzil Remote - soporte a distancia de Utzil Think"
 RENDEZVOUS_SERVER = "212.227.240.121"
@@ -310,6 +316,29 @@ def macos():
     print("ícono: res/mac-tray-dark-x2.png")
 
 
+def ios():
+    # La app de RustDesk ya es universal (TARGETED_DEVICE_FAMILY 1,2) y firma en
+    # automático, que es lo que usa Xcode Cloud. Se cambia de quién es.
+    cambiar("flutter/ios/Runner.xcodeproj/project.pbxproj", [
+        ("PRODUCT_BUNDLE_IDENTIFIER = com.carriez.flutterHbb;", f"PRODUCT_BUNDLE_IDENTIFIER = {ID_APP};"),
+        ("DEVELOPMENT_TEAM = HZF9JMC8YN;", f"DEVELOPMENT_TEAM = {EQUIPO_APPLE};"),
+    ])
+    cambiar("flutter/ios/Runner/Info.plist", [
+        ("""    <key>CFBundleDisplayName</key>
+    <string>RustDesk</string>""", f"""    <key>CFBundleDisplayName</key>
+    <string>{NOMBRE}</string>"""),
+        ("""	<key>CFBundleName</key>
+	<string>RustDesk</string>""", f"""	<key>CFBundleName</key>
+	<string>{NOMBRE}</string>"""),
+    ])
+    # iOS rechaza un ícono con transparencia: los de ios/ son los png de la
+    # diseñadora sobre fondo blanco, ya con los nombres del AppIcon.appiconset.
+    destino = Path("flutter/ios/Runner/Assets.xcassets/AppIcon.appiconset")
+    for png in sorted(Path(f"{ICONOS}/ios").glob("*.png")):
+        shutil.copyfile(png, destino / png.name)
+    print("ícono: ios")
+
+
 def android():
     res = "flutter/android/app/src/main/res"
     # Solo el applicationId: namespace y paquete Kotlin se quedan en
@@ -352,6 +381,7 @@ def aplicar():
     iconos()
     portatil()
     macos()
+    ios()
     android()
 
 
