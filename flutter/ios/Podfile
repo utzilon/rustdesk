@@ -1,7 +1,7 @@
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-platform :ios, '15.0'
+platform :ios, '18.5'
 
 project 'Runner', {
   'Debug' => :debug,
@@ -37,8 +37,10 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
-      # Utzil Remote: Xcode 27 ya no acepta menos de iOS 15 (corrida 2 de Xcode Cloud).
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      # Utzil Remote: el mínimo es el de la librería de Rust, que sale compilada para
+      # iOS 18.5 (los avisos del enlazado de la corrida 3). Declarar menos prometería
+      # equipos en los que la app no puede correr.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '18.5'
     end
   end
 end
