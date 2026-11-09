@@ -4,5 +4,5 @@
 # <commit>:<ruta> de src libs Cargo.toml Cargo.lock build.rs utzil, en ese orden.
 # Si el commit que se compila tiene otra huella, se cambió código de la librería:
 # hay que correr utzil-remote-ios.yml sobre él y poner aquí su commit y su huella.
-commit 252d0228bc20895d4b2dd3d40e1fce6dc071eea4
-huella b3ae45014e137bbfc8705936032caaea1b218865 81651eb79df030df7d1272dd0cb3839092348f21 76461d696dd42fa636c47902909201772bf438f2 727ef11d78aa3347d96218dc273dc83179bb1a7f 28a7a5e45280911b53bed0e2d5f275420a4ddb20 a74d4052c2227b447c24dad3046a180812c63b80
+commit 7abfee274f5fa31b17a76c5e589b8dfb9cd87246
+huella b3ae45014e137bbfc8705936032caaea1b218865 81651eb79df030df7d1272dd0cb3839092348f21 76461d696dd42fa636c47902909201772bf438f2 727ef11d78aa3347d96218dc273dc83179bb1a7f 28a7a5e45280911b53bed0e2d5f275420a4ddb20 0d58308053f3fcb446edd25ddfdcf51f40b91128
